@@ -1,8 +1,8 @@
 " File:        AutoFenc.vim
 " Brief:       Tries to automatically detect file encoding
 " Author:      Petr Zemek, s3rvac AT gmail DOT com
-" Version:     1.0
-" Last Change: Sun Jul 26 11:34:29 CEST 2009
+" Version:     1.0.1
+" Last Change: Sun Aug  2 20:53:16 CEST 2009
 "
 " License:
 "   Copyright (C) 2009 Petr Zemek
@@ -96,11 +96,20 @@
 "        Obsolete, merged with the previous one.
 "  Let me know if there are others and I'll add them here.
 "
-" Todo:
-"   - Backup the cursor position in the file before searching and return
-"     to this position when the searching is done
-"
 " Changelog:
+"   1.0.1 (2009-08-02)
+"     - Encoding autodetection is now performed only if the opened file
+"       exists (is stored somewhere). So, for example, the autodetection
+"       is now not performed when a new file is opened.
+"     - Correctly works with .viminfo, where the last cursor position
+"       in the file is stored when exiting the file. In the previous version
+"       of this script, this information was sometimes ignored and the cursor
+"       was initially on the very last line in a file. If the user does not
+"       use this .viminfo feature (or he does not use .viminfo at all),
+"       then the cursor will be initially placed on the very first line.
+"     - (Hopefully) fixed the implementation of the function which sets
+"       the detected encoding.
+"
 "   1.0 (2009-07-26)
 "     - Initial release version of this script.
 "
@@ -164,18 +173,18 @@ function! s:SetFileEncoding(enc)
 
 	" Check whether we're not trying to set current file encoding
 	if nenc !=? &fenc
-		" Backup syntax highlighting (it is forgotten when the file
-		" is reloaded)
+		" Backup the original fencs and syntax highlighting (it is forgotten when
+		" the file is reloaded)
+		let old_fencs = &fencs
 		let old_syntax = &syntax
 		
 		" Set the file encoding and reload it
-		exec 'set enc='.nenc
+		exec 'set fencs='.nenc
 		exec 'edit'
 
-		" Reset syntax highlighting to the original value
-		if old_syntax != ''
-			let &syntax = old_syntax
-		endif
+		" Reset fenc syntax highlighting to their original values
+		let &fencs = old_fencs
+		let &syntax = old_syntax
 
 		" File was reloaded
 		return 1
@@ -237,14 +246,24 @@ endfunction
 function! s:HTMLEncodingDetection()
 	" This method is based on the meta tag in the head of the HTML document
 	" (<meta http-equiv="Content-Type" ...)
+
+	" Store the actual position in the file and move to the very first line
+	" in the file
+	normal m`
+	normal gg
+
+	let enc = ''
 	
 	" The following regexp is a modified version of the regexp found here:
 	" http://vim.wikia.com/wiki/Detect_encoding_from_the_charset_specified_in_HTML_files
 	if search('\c<meta\s\+http-equiv=\("\?\)Content-Type\1\s\+content="[A-Za-z]\+/[+A-Za-z]\+;\s\+charset=[-A-Za-z0-9_]\+"') != 0
-		return matchstr(getline('.'), 'charset=\zs[-A-Za-z0-9_]\+')
+		let enc = matchstr(getline('.'), 'charset=\zs[-A-Za-z0-9_]\+')
 	endif
 
-	return ''
+	" Restore the original position in the file
+	normal ``
+
+	return enc
 endfunction
 
 "-------------------------------------------------------------------------------
@@ -255,13 +274,23 @@ function! s:XMLEncodingDetection()
 	" The first part of this method is based on the first line of XML files
 	" (<?xml version="..." encoding="..."?>)
 	
+	" Store the actual position in the file and move to the very first line
+	" in the file
+	normal m`
+	normal gg
+
+	let enc = ''
+
 	if search('\c<?xml\s\+version="[.0-9]\+"\s\+encoding="[-A-Za-z0-9_]\+"') != 0
-		return matchstr(getline('.'), 'encoding="\zs[-A-Za-z0-9_]\+')
+		let enc = matchstr(getline('.'), 'encoding="\zs[-A-Za-z0-9_]\+')
 	endif
+
+	" Restore the original position in the file
+	normal ``
 
 	" If there was no encoding specified, return utf-8 (the check for BOM
 	" should be done in another function - if the user wish that)
-	return 'utf-8'
+	return enc != '' ? enc : 'utf-8'
 endfunction
 
 "-------------------------------------------------------------------------------
@@ -272,15 +301,25 @@ function! s:CSSEncodingDetection()
 	" This method is based on the @charset 'at-rule'
 	" (see http://www.w3.org/International/questions/qa-css-charset)
 
+	" Store the actual position in the file and move to the very first line
+	" in the file
+	normal m`
+	normal gg
+
+	let enc = ''
+
 	" Note: The specs says that this line should be the first line in the file,
 	" but I'm searching every line in the file (some comments could perhaps
 	" precede the @charset in practice). If you don't like it, you are
 	" encouraged to change the code :).
 	if search('\c^\s*@charset\s\+"[-A-Za-z0-9_]\+"') != 0
-		return matchstr(getline('.'), '^\s*@charset\s\+"\zs[-A-Za-z0-9_]\+')
+		let enc = matchstr(getline('.'), '^\s*@charset\s\+"\zs[-A-Za-z0-9_]\+')
 	endif
 
-	return ''
+	" Restore the original position in the file
+	normal ``
+
+	return enc
 endfunction
 
 "-------------------------------------------------------------------------------
@@ -348,10 +387,18 @@ endfunction
 
 "-------------------------------------------------------------------------------
 " Tries to detect encoding of the current file via several ways (according
-" to the configuration) and returns it.
-" If the encoding was not detected successfully, it returns the empty string.
+" to the configuration) and returns it. If the encoding was not detected
+" successfully, it returns the empty string. If the file is not stored anywhere
+" (e.g. a new file was opened), then the autodetection is not performed and this
+" function simply returns the empty string.
 "-------------------------------------------------------------------------------
 function! s:DetectFileEncoding()
+	" Check whether the autodetection should be performed
+	" (i.e. the file is stored somewhere)
+	if expand('%:p') == ''
+		return ''
+	endif
+
 	" BOM encoding detection
 	if g:autofenc_autodetect_bom
 		let enc = s:BOMEncodingDetection()
@@ -409,7 +456,7 @@ endfunction
 " and sets the detected one (if any). If the ASCII encoding is detected,
 " it does nothing to allow Vim to set it's internal encoding instead.
 "-------------------------------------------------------------------------------
-function! s:DetectAndSetEncoding()
+function! s:DetectAndSetFileEncoding()
 	let enc = s:DetectFileEncoding()
 
 	if (enc != '') && (enc != 'ascii')
@@ -419,5 +466,5 @@ endfunction
 
 " Set the detected file encoding
 if g:autofenc_enable
-	autocmd BufRead * call s:DetectAndSetEncoding()
+	au BufRead * call s:DetectAndSetFileEncoding()
 endif
