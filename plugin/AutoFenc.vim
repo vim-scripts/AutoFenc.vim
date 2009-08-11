@@ -1,8 +1,8 @@
 " File:        AutoFenc.vim
 " Brief:       Tries to automatically detect file encoding
 " Author:      Petr Zemek, s3rvac AT gmail DOT com
-" Version:     1.0.1
-" Last Change: Sun Aug  2 20:53:16 CEST 2009
+" Version:     1.0.2
+" Last Change: Tue Aug 11 20:02:26 CEST 2009
 "
 " License:
 "   Copyright (C) 2009 Petr Zemek
@@ -10,17 +10,17 @@
 "   under the terms of the GNU General Public License as published by the Free
 "   Software Foundation; either version 2 of the License, or (at your option)
 "   any later version.
-" 
+"
 "   This program is distributed in the hope that it will be useful, but
 "   WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
 "   or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 "   for more details.
-" 
+"
 "   You should have received a copy of the GNU General Public License along
 "   with this program; if not, write to the Free Software Foundation, Inc.,
 "   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 "
-" Description: 
+" Description:
 "   This script tries to automatically detect and set file encoding when
 "   opening a file in Vim. It does this in several possible ways (according
 "   to the configuration) in this order (when a method fails, it tries
@@ -76,16 +76,16 @@
 "
 " Requirements:
 "   - filetype plugin must be enabled (a line like 'filetype plugin on' must
-"     be in your $HOME/.vimrc [*nix] or $HOME/_vimrc [MS Windows])
+"     be in your $HOME/.vimrc [*nix] or %UserProfile%\_vimrc [MS Windows])
 "
 " Installation Details:
 "   Put this file into your $HOME/.vim/plugin directory [*nix]
-"   or $HOME/vimfiles/plugin folder [MS Windows].
+"   or %UserProfile%\vimfiles\plugin folder [MS Windows].
 "
 " Notes:
 "  This script is by all means NOT perfect, but it works for me and suits my
 "  needs very well, so it might be also useful for you. Your feedback,
-"  opinion, suggestions, bugreports, patches, simply anything you have
+"  opinion, suggestions, bug reports, patches, simply anything you have
 "  to say is welcomed!
 "
 "  There are two similar plugins to this one, so if you don't like this one,
@@ -97,6 +97,10 @@
 "  Let me know if there are others and I'll add them here.
 "
 " Changelog:
+"   1.0.2 (2009-08-11)
+"     - Fixed the XML encoding detection function.
+"     - Minor code and documentation fixes.
+"
 "   1.0.1 (2009-08-02)
 "     - Encoding autodetection is now performed only if the opened file
 "       exists (is stored somewhere). So, for example, the autodetection
@@ -124,13 +128,13 @@ let autofenc_loaded = 1
 " Checks whether the selected variable (first parameter) is already set and
 " if not, it sets it to the value of the second parameter.
 "-------------------------------------------------------------------------------
-function! s:CheckAndSetVar(var, value)
+function s:CheckAndSetVar(var, value)
 	if !exists(a:var)
-		exec 'let ' . a:var . ' = ' . "'" . a:value . "'"
+		exec 'let ' . a:var . ' = ' . string(a:value)
 	endif
 endfunction
 
-" Variable initialization (see script description for more information)
+" Variables initialization (see script description for more information)
 call s:CheckAndSetVar('g:autofenc_enable', 1)
 call s:CheckAndSetVar('g:autofenc_autodetect_bom', 1)
 call s:CheckAndSetVar('g:autofenc_autodetect_html', 1)
@@ -147,11 +151,11 @@ call s:CheckAndSetVar('g:autofenc_ext_prog_unknown_fenc', '???')
 " Normalizes selected encoding and returns it, so it can be safely used as
 " a new encoding. This function should be called before a new encoding is set.
 "-------------------------------------------------------------------------------
-function! s:NormalizeEncoding(enc)
+function s:NormalizeEncoding(enc)
 	let nenc = tolower(a:enc)
 
 	" Some canonical encoding names in Vim
-	if nenc =~ 'iso[-_]8859-1' 
+	if nenc =~ 'iso[-_]8859-1'
 		return 'latin1'
 	elseif nenc =~ 'iso[-_]8859-2'
 		return 'latin2'
@@ -168,7 +172,7 @@ endfunction
 " Sets the selected file encoding. Returns 1 if the file was reloaded,
 " 0 otherwise.
 "-------------------------------------------------------------------------------
-function! s:SetFileEncoding(enc)
+function s:SetFileEncoding(enc)
 	let nenc = s:NormalizeEncoding(a:enc)
 
 	" Check whether we're not trying to set current file encoding
@@ -177,7 +181,7 @@ function! s:SetFileEncoding(enc)
 		" the file is reloaded)
 		let old_fencs = &fencs
 		let old_syntax = &syntax
-		
+
 		" Set the file encoding and reload it
 		exec 'set fencs='.nenc
 		exec 'edit'
@@ -199,7 +203,7 @@ endfunction
 " detect a multibyte encoding. If there is a BOM, it returns the appropriate
 " encoding, otherwise the empty string is returned.
 "-------------------------------------------------------------------------------
-function! s:BOMEncodingDetection()
+function s:BOMEncodingDetection()
 	" Implementation of this function is based on a part of the FencsView.vim
 	" plugin by Ming Bai (http://www.vim.org/scripts/script.php?script_id=1708)
 
@@ -243,7 +247,7 @@ endfunction
 " Tries the HTML way of encoding detection of the current file and returns the
 " detected encoding (or the empty string, if the encoding was not detected).
 "-------------------------------------------------------------------------------
-function! s:HTMLEncodingDetection()
+function s:HTMLEncodingDetection()
 	" This method is based on the meta tag in the head of the HTML document
 	" (<meta http-equiv="Content-Type" ...)
 
@@ -253,7 +257,7 @@ function! s:HTMLEncodingDetection()
 	normal gg
 
 	let enc = ''
-	
+
 	" The following regexp is a modified version of the regexp found here:
 	" http://vim.wikia.com/wiki/Detect_encoding_from_the_charset_specified_in_HTML_files
 	if search('\c<meta\s\+http-equiv=\("\?\)Content-Type\1\s\+content="[A-Za-z]\+/[+A-Za-z]\+;\s\+charset=[-A-Za-z0-9_]\+"') != 0
@@ -270,10 +274,10 @@ endfunction
 " Tries the XML way of encoding detection of the current file and returns the
 " detected encoding (or the empty string, if the encoding was not detected).
 "-------------------------------------------------------------------------------
-function! s:XMLEncodingDetection()
+function s:XMLEncodingDetection()
 	" The first part of this method is based on the first line of XML files
 	" (<?xml version="..." encoding="..."?>)
-	
+
 	" Store the actual position in the file and move to the very first line
 	" in the file
 	normal m`
@@ -297,7 +301,7 @@ endfunction
 " Tries the CSS way of encoding detection of the current file and returns the
 " detected encoding (or the empty string, if the encoding was not detected).
 "-------------------------------------------------------------------------------
-function! s:CSSEncodingDetection()
+function s:CSSEncodingDetection()
 	" This method is based on the @charset 'at-rule'
 	" (see http://www.w3.org/International/questions/qa-css-charset)
 
@@ -333,7 +337,7 @@ endfunction
 " or 'encoding' (without quotes, case insensitive), which is followed by
 " optional ':' (and whitespace) and the name of the encoding.
 "-------------------------------------------------------------------------------
-function! s:CommentEncodingDetection()
+function s:CommentEncodingDetection()
 	" Get first and last X lines from the file (according to the configuration)
 	let num_of_lines = g:autofenc_autodetect_comment_num_of_lines
 	let lines_to_search_enc = readfile(expand('%:p'), '', num_of_lines)
@@ -356,11 +360,11 @@ endfunction
 " If the program is not executable or there is some error, it returns
 " the empty string. Otherwise, the detected encoding is returned.
 "-------------------------------------------------------------------------------
-function! s:ExtProgEncodingDetection()
+function s:ExtProgEncodingDetection()
 	if executable(g:autofenc_ext_prog_path)
 		" Get full path of the currently edited file
 		let file_path = expand('%:p')
-		
+
 		" Transform it so it can be passed to the enca program as an argument
 		" (in quotes, because there can be spaces in the file path)
 		let quoted_fp = substitute(file_path, '"', '\\"', 'g')
@@ -368,14 +372,14 @@ function! s:ExtProgEncodingDetection()
 		" Create the complete external program command by appending program
 		" arguments and the current file path to the external program
 		let ext_prog_cmd = g:autofenc_ext_prog_path.' '.g:autofenc_ext_prog_args.' "'.quoted_fp.'"'
-		
+
 		" Run it to get the encoding
 		let enc = system(ext_prog_cmd)
 
 		" Remove trailing newline from the output
 		" (system() removes any \r from the result automatically)
 		let enc = substitute(enc, '\n', '', '')
-		
+
 		if enc != g:autofenc_ext_prog_unknown_fenc
 			" Encoding was (probably) detected successfully
 			return enc
@@ -392,7 +396,7 @@ endfunction
 " (e.g. a new file was opened), then the autodetection is not performed and this
 " function simply returns the empty string.
 "-------------------------------------------------------------------------------
-function! s:DetectFileEncoding()
+function s:DetectFileEncoding()
 	" Check whether the autodetection should be performed
 	" (i.e. the file is stored somewhere)
 	if expand('%:p') == ''
@@ -456,7 +460,7 @@ endfunction
 " and sets the detected one (if any). If the ASCII encoding is detected,
 " it does nothing to allow Vim to set it's internal encoding instead.
 "-------------------------------------------------------------------------------
-function! s:DetectAndSetFileEncoding()
+function s:DetectAndSetFileEncoding()
 	let enc = s:DetectFileEncoding()
 
 	if (enc != '') && (enc != 'ascii')
