@@ -1,8 +1,8 @@
 " File:        AutoFenc.vim
 " Brief:       Tries to automatically detect file encoding
 " Author:      Petr Zemek, s3rvac AT gmail DOT com
-" Version:     1.0.2
-" Last Change: Tue Aug 11 20:02:26 CEST 2009
+" Version:     1.1
+" Last Change: Sun Aug 16 21:30:40 CEST 2009
 "
 " License:
 "   Copyright (C) 2009 Petr Zemek
@@ -44,6 +44,19 @@
 "   Configuration options for this plugin (you can set them in your $HOME/.vimrc):
 "    - g:autofenc_enable (0 or 1, default 1)
 "        Enables/disables this plugin.
+"    - g:autofenc_max_file_size (number >= 0, default 10485760)
+"        If the size of a file is higher than this value (in bytes), then
+"        the autodetection will not be performed.
+"    - g:autofenc_disable_for_files_matching (regular expression, see below)
+"        If the file (with complete path) matches this regular expression,
+"        then the autodetection will not be performed. It is by default set
+"        to disable autodetection for non-local files (e.g. accessed via ftp,
+"        scp etc., because the script can't handle some kind of autodetection
+"        for these files). The regular expression is matched case-sensitively.
+"    - g:autofenc_disable_for_file_types (list of strings, default [])
+"        If the file type matches some of the filetypes specified in this list,
+"        then the autodetection will not be performed. Comparison is done
+"        case-sensitively.
 "    - g:autofenc_autodetect_bom (0 or 1, default 1)
 "        Enables/disables detection of encoding by BOM.
 "    - g:autofenc_autodetect_html (0 or 1, default 1)
@@ -97,6 +110,11 @@
 "  Let me know if there are others and I'll add them here.
 "
 " Changelog:
+"   1.1 (2009-08-16)
+"     - Added three configuration possibilites to disable autodetection for
+"       specific files (based on file size, file type and file path).
+"       See script description for more info.
+"
 "   1.0.2 (2009-08-11)
 "     - Fixed the XML encoding detection function.
 "     - Minor code and documentation fixes.
@@ -136,6 +154,9 @@ endfunction
 
 " Variables initialization (see script description for more information)
 call s:CheckAndSetVar('g:autofenc_enable', 1)
+call s:CheckAndSetVar('g:autofenc_max_file_size', 10485760)
+call s:CheckAndSetVar('g:autofenc_disable_for_files_matching', '^[-_a-zA-Z0-9]\+://')
+call s:CheckAndSetVar('g:autofenc_disable_for_file_types', [])
 call s:CheckAndSetVar('g:autofenc_autodetect_bom', 1)
 call s:CheckAndSetVar('g:autofenc_autodetect_html', 1)
 call s:CheckAndSetVar('g:autofenc_autodetect_xml', 1)
@@ -391,15 +412,22 @@ endfunction
 
 "-------------------------------------------------------------------------------
 " Tries to detect encoding of the current file via several ways (according
-" to the configuration) and returns it. If the encoding was not detected
-" successfully, it returns the empty string. If the file is not stored anywhere
-" (e.g. a new file was opened), then the autodetection is not performed and this
-" function simply returns the empty string.
+" to the configuration) and returns it. If the encoding was not detected 
+" successfully, it returns the empty string - this can happen because:
+"  - the file is in unknown encoding
+"  - the file is not stored anywhere (e.g. a new file was opened)
+"  - autodetection is disabled for this file (either the file is too large
+"    or autodetection is disabled for this file, see configuration)
 "-------------------------------------------------------------------------------
 function s:DetectFileEncoding()
 	" Check whether the autodetection should be performed
-	" (i.e. the file is stored somewhere)
-	if expand('%:p') == ''
+	" (see function description for more information)
+	let file_path = expand('%:p')
+	let file_size = getfsize(file_path)
+	if file_path == '' ||
+			\ file_size > g:autofenc_max_file_size || file_size < 0 ||
+			\ file_path =~ g:autofenc_disable_for_files_matching ||
+			\ index(g:autofenc_disable_for_file_types, &ft, 0, 1) != -1
 		return ''
 	endif
 
