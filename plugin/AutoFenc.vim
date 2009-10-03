@@ -1,8 +1,8 @@
 " File:        AutoFenc.vim
 " Brief:       Tries to automatically detect file encoding
 " Author:      Petr Zemek, s3rvac AT gmail DOT com
-" Version:     1.1
-" Last Change: Sun Aug 16 21:30:40 CEST 2009
+" Version:     1.1.1
+" Last Change: Sat Oct  3 21:23:02 CEST 2009
 "
 " License:
 "   Copyright (C) 2009 Petr Zemek
@@ -110,6 +110,11 @@
 "  Let me know if there are others and I'll add them here.
 "
 " Changelog:
+"   1.1.1 (2009-10-03)
+"     - Fixed the comment encoding detection function (the encoding was not
+"       detected if there were some alphanumeric characters before
+"       the "encoding" string, like in "# vim:fileencoding=<encoding-name>").
+"
 "   1.1 (2009-08-16)
 "     - Added three configuration possibilites to disable autodetection for
 "       specific files (based on file size, file type and file path).
@@ -365,7 +370,7 @@ function s:CommentEncodingDetection()
 	let lines_to_search_enc += readfile(expand('%:p'), '', -num_of_lines)
 
 	" Check all of the returned lines
-	let re = '\c^\A\+\(en\)\?coding[:=]\?\s*\zs[-A-Za-z0-9_]\+'
+	let re = '\c^\A.*\(en\)\?coding[:=]\?\s*\zs[-A-Za-z0-9_]\+'
 	for line in lines_to_search_enc
 		let enc = matchstr(line, re)
 		if enc != ''
@@ -412,7 +417,7 @@ endfunction
 
 "-------------------------------------------------------------------------------
 " Tries to detect encoding of the current file via several ways (according
-" to the configuration) and returns it. If the encoding was not detected 
+" to the configuration) and returns it. If the encoding was not detected
 " successfully, it returns the empty string - this can happen because:
 "  - the file is in unknown encoding
 "  - the file is not stored anywhere (e.g. a new file was opened)
