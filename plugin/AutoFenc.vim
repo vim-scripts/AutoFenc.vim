@@ -1,11 +1,11 @@
 " File:        AutoFenc.vim
 " Brief:       Tries to automatically detect file encoding
 " Author:      Petr Zemek, s3rvac AT gmail DOT com
-" Version:     1.1.1
-" Last Change: Sat Oct  3 21:23:02 CEST 2009
+" Version:     1.2
+" Last Change: Thu Mar 31 21:44:39 CEST 2011
 "
 " License:
-"   Copyright (C) 2009 Petr Zemek
+"   Copyright (C) 2009, 2011 Petr Zemek
 "   This program is free software; you can redistribute it and/or modify it
 "   under the terms of the GNU General Public License as published by the Free
 "   Software Foundation; either version 2 of the License, or (at your option)
@@ -31,7 +31,7 @@
 "         file types
 "     (3) XML way of encoding detection (via <?xml ... ?> declaration), only
 "         for XML based file types
-"     (4) CSS way of encoding detection (via @chardet 'at-rule'), only for
+"     (4) CSS way of encoding detection (via @charset 'at-rule'), only for
 "         CSS files
 "     (5) checks whether the encoding is specified in a comment (like
 "         '# Encoding: latin2'), for all file types
@@ -44,6 +44,8 @@
 "   Configuration options for this plugin (you can set them in your $HOME/.vimrc):
 "    - g:autofenc_enable (0 or 1, default 1)
 "        Enables/disables this plugin.
+"    - g:autofenc_emit_messages (0 or 1, default 0)
+"        Emits messages about the detected/used encoding upon opening a file.
 "    - g:autofenc_max_file_size (number >= 0, default 10485760)
 "        If the size of a file is higher than this value (in bytes), then
 "        the autodetection will not be performed.
@@ -57,7 +59,8 @@
 "        If the file type matches some of the filetypes specified in this list,
 "        then the autodetection will not be performed. Comparison is done
 "        case-sensitively.
-"    - g:autofenc_autodetect_bom (0 or 1, default 1)
+"    - g:autofenc_autodetect_bom (0 or 1, default 0 if 'ucs-bom' is in
+"                                 'fileencodings', 1 otherwise)
 "        Enables/disables detection of encoding by BOM.
 "    - g:autofenc_autodetect_html (0 or 1, default 1)
 "        Enables/disables detection of encoding for HTML based documents.
@@ -101,15 +104,34 @@
 "  opinion, suggestions, bug reports, patches, simply anything you have
 "  to say is welcomed!
 "
-"  There are two similar plugins to this one, so if you don't like this one,
+"  There are similar plugins to this one, so if you don't like this one,
 "  you can test these:
 "    - FencView.vim (http://www.vim.org/scripts/script.php?script_id=1708)
 "        Mainly supports detection of encodings for asian languages.
 "    - MultiEnc.vim (http://www.vim.org/scripts/script.php?script_id=1806)
 "        Obsolete, merged with the previous one.
+"    - charset.vim (http://www.vim.org/scripts/script.php?script_id=199)
+"        Not very complete/correct and last update in 2002.
+"    - http://vim.wikia.com/wiki/Detect_encoding_from_the_charset_specified_in_HTML_files
+"        Same basic ideas but only for HTML files.
 "  Let me know if there are others and I'll add them here.
 "
 " Changelog:
+"   1.2 (2011-03-31) Thanks to Benjamin Fritz for the updates in this version.
+"     - TOhtml's IANA name/Vim encoding conversion functions are now used.
+"     - Changed BOM detection so it does not duplicate a check Vim already did by
+"       default (i.e. default to off if ucs-bom is in the 'fileencodings').
+"     - Put autocmds in the AutoFenc augroup for easier handling.
+"     - Made autocmd nested so we don't need to worry about restoring everything
+"       that other autocmds may set (e.g. syntax).
+"     - Jumplist or cursor position during detection are not affected.
+"     - The g:autofenc_autodetect_comment_num_of_lines option is now used also in
+"       HTML/XML/CSS detection routines (previously only used for encoding
+"       specified in comments).
+"     - Improved HTML charset line regex.
+"     - Added an option (g:autofenc_emit_message) to emit messages about the
+"       detected/used encoding upon opening a file.
+"
 "   1.1.1 (2009-10-03)
 "     - Fixed the comment encoding detection function (the encoding was not
 "       detected if there were some alphanumeric characters before
@@ -145,7 +167,8 @@
 if exists('autofenc_loaded')
 	finish
 endif
-let autofenc_loaded = 1
+" make the loaded variable actually useful by including the version number
+let autofenc_loaded = '1.2'
 
 "-------------------------------------------------------------------------------
 " Checks whether the selected variable (first parameter) is already set and
@@ -159,10 +182,11 @@ endfunction
 
 " Variables initialization (see script description for more information)
 call s:CheckAndSetVar('g:autofenc_enable', 1)
+call s:CheckAndSetVar('g:autofenc_emit_messages', 0)
 call s:CheckAndSetVar('g:autofenc_max_file_size', 10485760)
 call s:CheckAndSetVar('g:autofenc_disable_for_files_matching', '^[-_a-zA-Z0-9]\+://')
 call s:CheckAndSetVar('g:autofenc_disable_for_file_types', [])
-call s:CheckAndSetVar('g:autofenc_autodetect_bom', 1)
+call s:CheckAndSetVar('g:autofenc_autodetect_bom', (&fileencodings !~# 'ucs-bom'))
 call s:CheckAndSetVar('g:autofenc_autodetect_html', 1)
 call s:CheckAndSetVar('g:autofenc_autodetect_xml', 1)
 call s:CheckAndSetVar('g:autofenc_autodetect_css', 1)
@@ -180,13 +204,29 @@ call s:CheckAndSetVar('g:autofenc_ext_prog_unknown_fenc', '???')
 function s:NormalizeEncoding(enc)
 	let nenc = tolower(a:enc)
 
-	" Some canonical encoding names in Vim
-	if nenc =~ 'iso[-_]8859-1'
+	" Recent versions of TOhtml runtime plugin have some nice charset to encoding
+	" functions which even allow user overrides. Use them if available.
+	if has('float') && exists('g:loaded_2html_plugin') &&
+				\ str2float(strpart(g:loaded_2html_plugin, 3)) >= 7.3 &&
+				\ str2nr(substitute(g:loaded_2html_plugin, '.*_v', '', '')) >= 7
+		let nenc2 = tohtml#EncodingFromCharset(nenc)
+		if nenc2 == ""
+			if g:autofenc_emit_messages
+				echomsg 'AutoFenc: detected unrecognized charset, trying fenc='.nenc
+			endif
+		else
+			return nenc2
+		endif
+	" If TOhtml is unavailable or the wrong version, at least handle some
+	" canonical encoding names in Vim.
+	elseif nenc =~ 'iso[-_]8859-1'
 		return 'latin1'
 	elseif nenc =~ 'iso[-_]8859-2'
 		return 'latin2'
-	elseif nenc =~ '\(cp\|win\(dows\)\?\)-1250'
-		return 'cp1250'
+	elseif necn ==? 'gb2312'
+		return 'cp936' " GB2312 imprecisely means CP936 in HTML
+	elseif nenc =~ '\(cp\|win\(dows\)\?\)-125\d'
+		return 'cp125'.nenc[strlen(nenc)-1]
 	elseif nenc == 'utf8'
 		return 'utf-8'
 	endif
@@ -202,19 +242,9 @@ function s:SetFileEncoding(enc)
 	let nenc = s:NormalizeEncoding(a:enc)
 
 	" Check whether we're not trying to set current file encoding
-	if nenc !=? &fenc
-		" Backup the original fencs and syntax highlighting (it is forgotten when
-		" the file is reloaded)
-		let old_fencs = &fencs
-		let old_syntax = &syntax
-
+	if nenc != "" && nenc !=? &fenc
 		" Set the file encoding and reload it
-		exec 'set fencs='.nenc
-		exec 'edit'
-
-		" Reset fenc syntax highlighting to their original values
-		let &fencs = old_fencs
-		let &syntax = old_syntax
+		exec 'edit ++enc='.nenc
 
 		" File was reloaded
 		return 1
@@ -279,19 +309,26 @@ function s:HTMLEncodingDetection()
 
 	" Store the actual position in the file and move to the very first line
 	" in the file
-	normal m`
-	normal gg
+	let curpos=getpos('.')
+	keepjumps 1
 
 	let enc = ''
 
 	" The following regexp is a modified version of the regexp found here:
 	" http://vim.wikia.com/wiki/Detect_encoding_from_the_charset_specified_in_HTML_files
-	if search('\c<meta\s\+http-equiv=\("\?\)Content-Type\1\s\+content="[A-Za-z]\+/[+A-Za-z]\+;\s\+charset=[-A-Za-z0-9_]\+"') != 0
-		let enc = matchstr(getline('.'), 'charset=\zs[-A-Za-z0-9_]\+')
+	"                         '\c<meta[ \t\n]\+http-equiv=\("\?\)Content-Type\1[ \t\n]\+content="text/html;[ \t\n]*charset=[-A-Za-z0-9_]\+"[ \t\n]*>'
+	let charset_line = search('\c<meta\_s\+http-equiv=\([''"]\?\)Content-Type\1\_s\+content=\([''"]\)[A-Za-z]\+/[+A-Za-z]\+;\_s*charset=[-A-Za-z0-9_]\+\2', 'nc', g:autofenc_autodetect_comment_num_of_lines)
+	" If charset line was not found, try attributes in reverse order since order is
+	" not actually important.
+	if charset_line == 0
+		let charset_line = search('\c<meta\_s\+content=\([''"]\)[A-Za-z]\+/[+A-Za-z]\+;\_s*charset=[-A-Za-z0-9_]\+\1\_s\+http-equiv=\([''"]\?\)Content-Type\2', 'nc', g:autofenc_autodetect_comment_num_of_lines)
+	endif
+	if charset_line != 0
+		let enc = matchstr(getline(charset_line), 'charset=\zs[-A-Za-z0-9_]\+')
 	endif
 
 	" Restore the original position in the file
-	normal ``
+	call setpos('.', curpos)
 
 	return enc
 endfunction
@@ -306,17 +343,18 @@ function s:XMLEncodingDetection()
 
 	" Store the actual position in the file and move to the very first line
 	" in the file
-	normal m`
-	normal gg
+	let curpos=getpos('.')
+	keepjumps 1
 
 	let enc = ''
 
-	if search('\c<?xml\s\+version="[.0-9]\+"\s\+encoding="[-A-Za-z0-9_]\+"') != 0
-		let enc = matchstr(getline('.'), 'encoding="\zs[-A-Za-z0-9_]\+')
+	let charset_line = search('\c<?xml\s\+version="[.0-9]\+"\s\+encoding="[-A-Za-z0-9_]\+"', 'nc', g:autofenc_autodetect_comment_num_of_lines)
+	if charset_line != 0
+		let enc = matchstr(getline(charset_line), 'encoding="\zs[-A-Za-z0-9_]\+')
 	endif
 
 	" Restore the original position in the file
-	normal ``
+	call setpos('.', curpos)
 
 	" If there was no encoding specified, return utf-8 (the check for BOM
 	" should be done in another function - if the user wish that)
@@ -333,8 +371,8 @@ function s:CSSEncodingDetection()
 
 	" Store the actual position in the file and move to the very first line
 	" in the file
-	normal m`
-	normal gg
+	let curpos=getpos('.')
+	keepjumps 1
 
 	let enc = ''
 
@@ -342,12 +380,13 @@ function s:CSSEncodingDetection()
 	" but I'm searching every line in the file (some comments could perhaps
 	" precede the @charset in practice). If you don't like it, you are
 	" encouraged to change the code :).
-	if search('\c^\s*@charset\s\+"[-A-Za-z0-9_]\+"') != 0
-		let enc = matchstr(getline('.'), '^\s*@charset\s\+"\zs[-A-Za-z0-9_]\+')
+	let charset_line = search('\c^\s*@charset\s\+"[-A-Za-z0-9_]\+"', 'nc', g:autofenc_autodetect_comment_num_of_lines)
+	if charset_line != 0
+		let enc = matchstr(getline(charset_line), '^\s*@charset\s\+"\zs[-A-Za-z0-9_]\+')
 	endif
 
 	" Restore the original position in the file
-	normal ``
+	call setpos('.', curpos)
 
 	return enc
 endfunction
@@ -491,17 +530,32 @@ endfunction
 "-------------------------------------------------------------------------------
 " Main plugin function. Tries to autodetect the correct file encoding
 " and sets the detected one (if any). If the ASCII encoding is detected,
-" it does nothing to allow Vim to set it's internal encoding instead.
+" it does nothing so allow Vim to set its internal encoding instead.
 "-------------------------------------------------------------------------------
 function s:DetectAndSetFileEncoding()
 	let enc = s:DetectFileEncoding()
 
+	" don't call again on the nested trigger from the edit
+	let b:autofenc_done = enc
+
 	if (enc != '') && (enc != 'ascii')
-		let file_reloaded = s:SetFileEncoding(enc)
+		if s:SetFileEncoding(enc)
+			if g:autofenc_emit_messages
+				echomsg "AutoFenc: Detected [".enc."] from file, loaded with fenc=".&fenc
+			endif
+		endif
 	endif
 endfunction
 
 " Set the detected file encoding
 if g:autofenc_enable
-	au BufRead * call s:DetectAndSetFileEncoding()
+	augroup AutoFenc
+		au!
+		" We need to check that we're not in the middle of a reload due to this
+		" plugin otherwise can recurse forever. But unlet the variable to allow
+		" re-detection on the next read of this buffer if it is just unloaded.
+		au BufRead * nested if !exists('b:autofenc_done') | call s:DetectAndSetFileEncoding() | else | unlet b:autofenc_done | endif
+	augroup END
 endif
+
+" vim: noet
