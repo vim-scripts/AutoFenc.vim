@@ -117,6 +117,10 @@
 "  Let me know if there are others and I'll add them here.
 "
 " Changelog:
+"   1.2.1 (2011-04-13)
+"     - Fixed a typo in a variable name (this resulted in an error in some
+"       occasions). Thanks to Charles Lee for pointing this bug out.
+"
 "   1.2 (2011-03-31) Thanks to Benjamin Fritz for the updates in this version.
 "     - TOhtml's IANA name/Vim encoding conversion functions are now used.
 "     - Changed BOM detection so it does not duplicate a check Vim already did by
@@ -223,7 +227,7 @@ function s:NormalizeEncoding(enc)
 		return 'latin1'
 	elseif nenc =~ 'iso[-_]8859-2'
 		return 'latin2'
-	elseif necn ==? 'gb2312'
+	elseif nenc ==? 'gb2312'
 		return 'cp936' " GB2312 imprecisely means CP936 in HTML
 	elseif nenc =~ '\(cp\|win\(dows\)\?\)-125\d'
 		return 'cp125'.nenc[strlen(nenc)-1]

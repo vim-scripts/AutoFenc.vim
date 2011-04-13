@@ -92,6 +92,10 @@ Notes:
   Let me know if there are others and I'll add them here.
 
 Changelog:
+1.2.1 (2011-04-13)
+   - Fixed a typo in a variable name (this resulted in an error in some
+     occasions). Thanks to Charles Lee for pointing this bug out.
+
 1.2 (2011-03-31) Thanks to Benjamin Fritz for the updates in this version.
   - TOhtml's IANA name/Vim encoding conversion functions are now used.
   - Changed BOM detection so it does not duplicate a check Vim already did by
