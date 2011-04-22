@@ -1,11 +1,11 @@
 " File:        AutoFenc.vim
 " Brief:       Tries to automatically detect file encoding
 " Author:      Petr Zemek, s3rvac AT gmail DOT com
-" Version:     1.2
-" Last Change: Thu Mar 31 21:44:39 CEST 2011
+" Version:     1.3
+" Last Change: Fri Apr 22 16:38:40 CEST 2011
 "
 " License:
-"   Copyright (C) 2009, 2011 Petr Zemek
+"   Copyright (C) 2009-2011 Petr Zemek
 "   This program is free software; you can redistribute it and/or modify it
 "   under the terms of the GNU General Public License as published by the Free
 "   Software Foundation; either version 2 of the License, or (at your option)
@@ -70,9 +70,9 @@
 "        Enables/disables detection of encoding for CSS documents.
 "    - g:autofenc_autodetect_comment (0 or 1, default 1)
 "        Enables/disables detection of encoding in comments.
-"    - g:autofenc_autodetect_comment_num_of_lines (number >= 0, default 5)
+"    - g:autofenc_autodetect_num_of_lines (number >= 0, default 5)
 "        How many lines from the beginning and from the end of the file should
-"        be searched for the possible encoding declaration
+"        be searched for the possible encoding declaration.
 "    - g:autofenc_autodetect_ext_prog (0 or 1, default 1)
 "        Enables/disables detection of encoding via external program
 "        (see additional settings below).
@@ -117,6 +117,11 @@
 "  Let me know if there are others and I'll add them here.
 "
 " Changelog:
+"   1.3 (2011-04-22) Thanks to Benjamin Fritz for the updates in this version.
+"     - Added support for HTML version 5 encoding detection.
+"     - The script now dies gracefully in old Vims.
+"     - 'g:autofenc_autodetect_comment_num_of_lines' renamed to 'g:autofenc_autodetect_num_of_lines'
+"
 "   1.2.1 (2011-04-13)
 "     - Fixed a typo in a variable name (this resulted in an error in some
 "       occasions). Thanks to Charles Lee for pointing this bug out.
@@ -129,7 +134,7 @@
 "     - Made autocmd nested so we don't need to worry about restoring everything
 "       that other autocmds may set (e.g. syntax).
 "     - Jumplist or cursor position during detection are not affected.
-"     - The g:autofenc_autodetect_comment_num_of_lines option is now used also in
+"     - The g:autofenc_autodetect_num_of_lines option is now used also in
 "       HTML/XML/CSS detection routines (previously only used for encoding
 "       specified in comments).
 "     - Improved HTML charset line regex.
@@ -167,12 +172,13 @@
 "     - Initial release version of this script.
 "
 
-" Check if the plugin was already loaded
-if exists('autofenc_loaded')
+" Check if the plugin was already loaded. Also, die gracefully if the used Vim
+" version is too old.
+if exists('autofenc_loaded') || v:version < 700
 	finish
 endif
 " make the loaded variable actually useful by including the version number
-let autofenc_loaded = '1.2'
+let autofenc_loaded = '1.3'
 
 "-------------------------------------------------------------------------------
 " Checks whether the selected variable (first parameter) is already set and
@@ -195,7 +201,7 @@ call s:CheckAndSetVar('g:autofenc_autodetect_html', 1)
 call s:CheckAndSetVar('g:autofenc_autodetect_xml', 1)
 call s:CheckAndSetVar('g:autofenc_autodetect_css', 1)
 call s:CheckAndSetVar('g:autofenc_autodetect_comment', 1)
-call s:CheckAndSetVar('g:autofenc_autodetect_comment_num_of_lines', 5)
+call s:CheckAndSetVar('g:autofenc_autodetect_num_of_lines', 5)
 call s:CheckAndSetVar('g:autofenc_autodetect_ext_prog', 1)
 call s:CheckAndSetVar('g:autofenc_ext_prog_path', 'enca')
 call s:CheckAndSetVar('g:autofenc_ext_prog_args', '-i -L czech')
@@ -320,18 +326,22 @@ function s:HTMLEncodingDetection()
 
 	" The following regexp is a modified version of the regexp found here:
 	" http://vim.wikia.com/wiki/Detect_encoding_from_the_charset_specified_in_HTML_files
-	"                         '\c<meta[ \t\n]\+http-equiv=\("\?\)Content-Type\1[ \t\n]\+content="text/html;[ \t\n]*charset=[-A-Za-z0-9_]\+"[ \t\n]*>'
-	let charset_line = search('\c<meta\_s\+http-equiv=\([''"]\?\)Content-Type\1\_s\+content=\([''"]\)[A-Za-z]\+/[+A-Za-z]\+;\_s*charset=[-A-Za-z0-9_]\+\2', 'nc', g:autofenc_autodetect_comment_num_of_lines)
+	let charset_line = search('\c<meta\_s\+http-equiv=\([''"]\?\)Content-Type\1\_s\+content=\([''"]\)[A-Za-z]\+/[+A-Za-z]\+;\_s*charset=[-A-Za-z0-9_]\+\2', 'nc', g:autofenc_autodetect_num_of_lines)
 	" If charset line was not found, try attributes in reverse order since order is
 	" not actually important.
 	if charset_line == 0
-		let charset_line = search('\c<meta\_s\+content=\([''"]\)[A-Za-z]\+/[+A-Za-z]\+;\_s*charset=[-A-Za-z0-9_]\+\1\_s\+http-equiv=\([''"]\?\)Content-Type\2', 'nc', g:autofenc_autodetect_comment_num_of_lines)
+		let charset_line = search('\c<meta\_s\+content=\([''"]\)[A-Za-z]\+/[+A-Za-z]\+;\_s*charset=[-A-Za-z0-9_]\+\1\_s\+http-equiv=\([''"]\?\)Content-Type\2', 'nc', g:autofenc_autodetect_num_of_lines)
+	endif
+	" Detect in HTML version 5
+	if charset_line == 0
+		let charset_line = search('\c<meta\_s\+charset=\([''"]\)[-A-Za-z0-9_]\+\1', 'nc', g:autofenc_autodetect_num_of_lines)
 	endif
 	if charset_line != 0
-		let enc = matchstr(getline(charset_line), 'charset=\zs[-A-Za-z0-9_]\+')
+		let enc = matchstr(getline(charset_line), 'charset=\([''"]\)\?\zs[-A-Za-z0-9_]\+\ze\1')
 	endif
 
 	" Restore the original position in the file
+
 	call setpos('.', curpos)
 
 	return enc
@@ -352,7 +362,7 @@ function s:XMLEncodingDetection()
 
 	let enc = ''
 
-	let charset_line = search('\c<?xml\s\+version="[.0-9]\+"\s\+encoding="[-A-Za-z0-9_]\+"', 'nc', g:autofenc_autodetect_comment_num_of_lines)
+	let charset_line = search('\c<?xml\s\+version="[.0-9]\+"\s\+encoding="[-A-Za-z0-9_]\+"', 'nc', g:autofenc_autodetect_num_of_lines)
 	if charset_line != 0
 		let enc = matchstr(getline(charset_line), 'encoding="\zs[-A-Za-z0-9_]\+')
 	endif
@@ -384,7 +394,7 @@ function s:CSSEncodingDetection()
 	" but I'm searching every line in the file (some comments could perhaps
 	" precede the @charset in practice). If you don't like it, you are
 	" encouraged to change the code :).
-	let charset_line = search('\c^\s*@charset\s\+"[-A-Za-z0-9_]\+"', 'nc', g:autofenc_autodetect_comment_num_of_lines)
+	let charset_line = search('\c^\s*@charset\s\+"[-A-Za-z0-9_]\+"', 'nc', g:autofenc_autodetect_num_of_lines)
 	if charset_line != 0
 		let enc = matchstr(getline(charset_line), '^\s*@charset\s\+"\zs[-A-Za-z0-9_]\+')
 	endif
@@ -408,7 +418,7 @@ endfunction
 "-------------------------------------------------------------------------------
 function s:CommentEncodingDetection()
 	" Get first and last X lines from the file (according to the configuration)
-	let num_of_lines = g:autofenc_autodetect_comment_num_of_lines
+	let num_of_lines = g:autofenc_autodetect_num_of_lines
 	let lines_to_search_enc = readfile(expand('%:p'), '', num_of_lines)
 	let lines_to_search_enc += readfile(expand('%:p'), '', -num_of_lines)
 

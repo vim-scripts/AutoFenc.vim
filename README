@@ -49,9 +49,9 @@ Configuration options for this plugin (you can set them in your $HOME/.vimrc):
      Enables/disables detection of encoding for CSS documents.
  - g:autofenc_autodetect_comment (0 or 1, default 1)
      Enables/disables detection of encoding in comments.
- - g:autofenc_autodetect_comment_num_of_lines (number >= 0, default 5)
+ - g:autofenc_autodetect_num_of_lines (number >= 0, default 5)
      How many lines from the beginning and from the end of the file should
-     be searched for the possible encoding declaration
+     be searched for the possible encoding declaration.
  - g:autofenc_autodetect_ext_prog (0 or 1, default 1)
      Enables/disables detection of encoding via external program
      (see additional settings below).
@@ -92,6 +92,11 @@ Notes:
   Let me know if there are others and I'll add them here.
 
 Changelog:
+1.3 (2011-04-22) Thanks to Benjamin Fritz for the updates in this version.
+   - Added support for HTML version 5 encoding detection.
+   - The script now dies gracefully in old Vims.
+   - 'g:autofenc_autodetect_comment_num_of_lines' renamed to 'g:autofenc_autodetect_num_of_lines'
+
 1.2.1 (2011-04-13)
    - Fixed a typo in a variable name (this resulted in an error in some
      occasions). Thanks to Charles Lee for pointing this bug out.
