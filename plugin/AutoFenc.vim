@@ -1,8 +1,8 @@
 " File:        AutoFenc.vim
 " Brief:       Tries to automatically detect file encoding
 " Author:      Petr Zemek, s3rvac AT gmail DOT com
-" Version:     1.3
-" Last Change: Fri Apr 22 16:38:40 CEST 2011
+" Version:     1.3.1
+" Last Change: Sat Jul 23 11:47:26 CEST 2011
 "
 " License:
 "   Copyright (C) 2009-2011 Petr Zemek
@@ -117,6 +117,9 @@
 "  Let me know if there are others and I'll add them here.
 "
 " Changelog:
+"   1.3.1 (2011-07-23) Thanks to Benjamin Fritz for the updates in this version.
+"     - Fixed the plugin behavior when reloading a file with different settings.
+"
 "   1.3 (2011-04-22) Thanks to Benjamin Fritz for the updates in this version.
 "     - Added support for HTML version 5 encoding detection.
 "     - The script now dies gracefully in old Vims.
@@ -251,10 +254,12 @@ endfunction
 function s:SetFileEncoding(enc)
 	let nenc = s:NormalizeEncoding(a:enc)
 
-	" Check whether we're not trying to set current file encoding
+	" Check whether we're not trying to set the current file encoding
 	if nenc != "" && nenc !=? &fenc
-		" Set the file encoding and reload it
-		exec 'edit ++enc='.nenc
+		" Set the file encoding and reload it, keeping any user-specified
+		" fileformat, and keeping any bad bytes in case the header is wrong (this
+		" won't let the user save if a conversion error happened on read)
+		exec 'edit ++enc='.nenc.' ++ff='.&ff.' ++bad=keep'
 
 		" File was reloaded
 		return 1

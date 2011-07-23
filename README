@@ -92,6 +92,9 @@ Notes:
   Let me know if there are others and I'll add them here.
 
 Changelog:
+1.3.1 (2011-07-23) Thanks to Benjamin Fritz for the updates in this version.
+  - Fixed the plugin behavior when reloading a file with different settings.
+
 1.3 (2011-04-22) Thanks to Benjamin Fritz for the updates in this version.
    - Added support for HTML version 5 encoding detection.
    - The script now dies gracefully in old Vims.
