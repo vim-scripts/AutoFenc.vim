@@ -1,8 +1,8 @@
 " File:        AutoFenc.vim
 " Brief:       Tries to automatically detect file encoding
 " Author:      Petr Zemek, s3rvac AT gmail DOT com
-" Version:     1.3.1
-" Last Change: Sat Jul 23 11:47:26 CEST 2011
+" Version:     1.3.2
+" Last Change: Thu Nov 24 14:06:00 CET 2011
 "
 " License:
 "   Copyright (C) 2009-2011 Petr Zemek
@@ -117,6 +117,9 @@
 "  Let me know if there are others and I'll add them here.
 "
 " Changelog:
+"   1.3.2 (2011-11-24) Thanks to Benjamin Fritz for the updates in this version.
+"     - Fixed the detection of the version of the TOhtml plugin.
+"
 "   1.3.1 (2011-07-23) Thanks to Benjamin Fritz for the updates in this version.
 "     - Fixed the plugin behavior when reloading a file with different settings.
 "
@@ -220,8 +223,9 @@ function s:NormalizeEncoding(enc)
 	" Recent versions of TOhtml runtime plugin have some nice charset to encoding
 	" functions which even allow user overrides. Use them if available.
 	if has('float') && exists('g:loaded_2html_plugin') &&
-				\ str2float(strpart(g:loaded_2html_plugin, 3)) >= 7.3 &&
-				\ str2nr(substitute(g:loaded_2html_plugin, '.*_v', '', '')) >= 7
+			\ (str2float(strpart(g:loaded_2html_plugin, 3)) >= 7.3 ||
+			\  str2float(strpart(g:loaded_2html_plugin, 3)) == 7.3 &&
+			\  str2nr(substitute(g:loaded_2html_plugin, '.*_v', '', '')) >= 7)
 		let nenc2 = tohtml#EncodingFromCharset(nenc)
 		if nenc2 == ""
 			if g:autofenc_emit_messages
