@@ -1,8 +1,8 @@
 " File:        AutoFenc.vim
 " Brief:       Tries to automatically detect file encoding
 " Author:      Petr Zemek, s3rvac AT gmail DOT com
-" Version:     1.3.2
-" Last Change: Thu Nov 24 14:06:00 CET 2011
+" Version:     1.3.3
+" Last Change: Tue Nov 29 19:40:48 CET 2011
 "
 " License:
 "   Copyright (C) 2009-2011 Petr Zemek
@@ -117,6 +117,14 @@
 "  Let me know if there are others and I'll add them here.
 "
 " Changelog:
+"   1.3.3 (2011-11-29) Thanks to Ingo Karkat for the updates in this version.
+"     - Fixed a problem in the TOhtml detection when, for example,
+"       g:loaded_2html_plugin = 'vim7.3_v6'.
+"     - The return code of the call of an external program via
+"       system(ext_prog_cmd) is now checked. This prevents Vim interpreting an
+"       error message as an encoding.
+"     - shellescape() is now used instead of quoting file_path manually.
+"
 "   1.3.2 (2011-11-24) Thanks to Benjamin Fritz for the updates in this version.
 "     - Fixed the detection of the version of the TOhtml plugin.
 "
@@ -224,7 +232,7 @@ function s:NormalizeEncoding(enc)
 	" functions which even allow user overrides. Use them if available.
 	if has('float') && exists('g:loaded_2html_plugin') &&
 			\ (str2float(strpart(g:loaded_2html_plugin, 3)) >= 7.3 ||
-			\  str2float(strpart(g:loaded_2html_plugin, 3)) == 7.3 &&
+			\  str2float(strpart(g:loaded_2html_plugin, 3)) > 7.3 &&
 			\  str2nr(substitute(g:loaded_2html_plugin, '.*_v', '', '')) >= 7)
 		let nenc2 = tohtml#EncodingFromCharset(nenc)
 		if nenc2 == ""
@@ -453,16 +461,16 @@ function s:ExtProgEncodingDetection()
 		" Get full path of the currently edited file
 		let file_path = expand('%:p')
 
-		" Transform it so it can be passed to the enca program as an argument
-		" (in quotes, because there can be spaces in the file path)
-		let quoted_fp = substitute(file_path, '"', '\\"', 'g')
-
 		" Create the complete external program command by appending program
 		" arguments and the current file path to the external program
-		let ext_prog_cmd = g:autofenc_ext_prog_path.' '.g:autofenc_ext_prog_args.' "'.quoted_fp.'"'
+		let ext_prog_cmd = g:autofenc_ext_prog_path.' '.g:autofenc_ext_prog_args.' '.shellescape(file_path)
 
 		" Run it to get the encoding
 		let enc = system(ext_prog_cmd)
+		if v:shell_error != 0
+			" An error occurred
+			return ''
+		endif
 
 		" Remove trailing newline from the output
 		" (system() removes any \r from the result automatically)
