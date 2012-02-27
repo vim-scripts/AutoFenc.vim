@@ -1,11 +1,11 @@
 " File:        AutoFenc.vim
 " Brief:       Tries to automatically detect file encoding
 " Author:      Petr Zemek, s3rvac AT gmail DOT com
-" Version:     1.3.3
-" Last Change: Tue Nov 29 19:40:48 CET 2011
+" Version:     1.3.4
+" Last Change: Mon Feb 27 16:08:57 CET 2012
 "
 " License:
-"   Copyright (C) 2009-2011 Petr Zemek
+"   Copyright (C) 2009-2012 Petr Zemek
 "   This program is free software; you can redistribute it and/or modify it
 "   under the terms of the GNU General Public License as published by the Free
 "   Software Foundation; either version 2 of the License, or (at your option)
@@ -117,6 +117,15 @@
 "  Let me know if there are others and I'll add them here.
 "
 " Changelog:
+"   1.3.4 (2012-02-27)
+"     - Don't override when the user explicitly sets file encoding with ++enc
+"       (thanks to Benjamin Fritz).
+"     - Fixed TOhtml version detection (again) and made sure line continuations
+"       can actually be used (thanks to Benjamin Fritz and Ingo Karkat).
+"     - Disabled the option shellslash on Windows before calling shellescape()
+"       (it may cause problems on Windows, thanks for the tip goes to Benjamin
+"       Fritz).
+"
 "   1.3.3 (2011-11-29) Thanks to Ingo Karkat for the updates in this version.
 "     - Fixed a problem in the TOhtml detection when, for example,
 "       g:loaded_2html_plugin = 'vim7.3_v6'.
@@ -191,8 +200,14 @@
 if exists('autofenc_loaded') || v:version < 700
 	finish
 endif
-" make the loaded variable actually useful by including the version number
+" Make the loaded variable actually useful by including the version number
 let autofenc_loaded = '1.3'
+
+" This plugin uses line continuations
+if &cpo =~ 'C'
+	let s:oldcpo = &cpo
+	set cpo-=C
+endif
 
 "-------------------------------------------------------------------------------
 " Checks whether the selected variable (first parameter) is already set and
@@ -230,20 +245,12 @@ function s:NormalizeEncoding(enc)
 
 	" Recent versions of TOhtml runtime plugin have some nice charset to encoding
 	" functions which even allow user overrides. Use them if available.
-	if has('float') && exists('g:loaded_2html_plugin') &&
-			\ (str2float(strpart(g:loaded_2html_plugin, 3)) >= 7.3 ||
-			\  str2float(strpart(g:loaded_2html_plugin, 3)) > 7.3 &&
-			\  str2nr(substitute(g:loaded_2html_plugin, '.*_v', '', '')) >= 7)
-		let nenc2 = tohtml#EncodingFromCharset(nenc)
-		if nenc2 == ""
-			if g:autofenc_emit_messages
-				echomsg 'AutoFenc: detected unrecognized charset, trying fenc='.nenc
-			endif
-		else
-			return nenc2
-		endif
-	" If TOhtml is unavailable or the wrong version, at least handle some
-	" canonical encoding names in Vim.
+	let nenc2 = ""
+	silent! let nenc2 = tohtml#EncodingFromCharset(nenc)
+	if nenc2 != ""
+		return nenc2
+	" If the TOhtml function is unavailable, at least handle some canonical
+	" encoding names in Vim.
 	elseif nenc =~ 'iso[-_]8859-1'
 		return 'latin1'
 	elseif nenc =~ 'iso[-_]8859-2'
@@ -254,6 +261,8 @@ function s:NormalizeEncoding(enc)
 		return 'cp125'.nenc[strlen(nenc)-1]
 	elseif nenc == 'utf8'
 		return 'utf-8'
+	elseif g:autofenc_emit_messages
+		echomsg 'AutoFenc: detected unrecognized charset, trying fenc='.nenc
 	endif
 
 	return nenc
@@ -452,6 +461,26 @@ function s:CommentEncodingDetection()
 endfunction
 
 "-------------------------------------------------------------------------------
+" A safe version of shellescape. Use it instead of shellescape().
+"-------------------------------------------------------------------------------
+function s:SafeShellescape(path)
+	" On MS Windows, we need to disable the option shellslash before calling
+	" shellescape() because otherwise, it may do stupid things (see, e.g.,
+	" http://vim.1045645.n5.nabble.com/shellescape-doesn-t-work-in-Windows-with-shellslash-set-td1211618.html).
+	if has("win32") || has("win64")
+		try
+			let old_ssl = &shellslash
+			set noshellslash
+			return shellescape(a:path)
+		finally
+			let &shellslash = old_ssl
+		endtry
+	else
+		return shellescape(a:path)
+	endif
+endfunction
+
+"-------------------------------------------------------------------------------
 " Tries to detect the file encoding via selected external program.
 " If the program is not executable or there is some error, it returns
 " the empty string. Otherwise, the detected encoding is returned.
@@ -462,8 +491,9 @@ function s:ExtProgEncodingDetection()
 		let file_path = expand('%:p')
 
 		" Create the complete external program command by appending program
-		" arguments and the current file path to the external program
-		let ext_prog_cmd = g:autofenc_ext_prog_path.' '.g:autofenc_ext_prog_args.' '.shellescape(file_path)
+		" arguments and the current file path to the external program.
+		"
+		let ext_prog_cmd = g:autofenc_ext_prog_path.' '.g:autofenc_ext_prog_args.' '.s:SafeShellescape(file_path)
 
 		" Run it to get the encoding
 		let enc = system(ext_prog_cmd)
@@ -585,8 +615,21 @@ if g:autofenc_enable
 		" We need to check that we're not in the middle of a reload due to this
 		" plugin otherwise can recurse forever. But unlet the variable to allow
 		" re-detection on the next read of this buffer if it is just unloaded.
-		au BufRead * nested if !exists('b:autofenc_done') | call s:DetectAndSetFileEncoding() | else | unlet b:autofenc_done | endif
+		au BufRead * nested
+			\ if !exists('b:autofenc_done') |
+			\   if v:cmdarg !~ '++enc' |
+			\     call s:DetectAndSetFileEncoding() |
+			\   endif |
+			\ else |
+			\   unlet b:autofenc_done |
+			\ endif
 	augroup END
+endif
+
+" Restore line continuations (and the rest of &cpo) when done
+if exists('s:oldcpo')
+	let &cpo = s:oldcpo
+	unlet s:oldcpo
 endif
 
 " vim: noet
