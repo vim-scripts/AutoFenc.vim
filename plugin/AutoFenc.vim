@@ -1,8 +1,8 @@
 " File:        AutoFenc.vim
 " Brief:       Tries to automatically detect file encoding
 " Author:      Petr Zemek, s3rvac AT gmail DOT com
-" Version:     1.3.4
-" Last Change: Mon Feb 27 16:08:57 CET 2012
+" Version:     1.4
+" Last Change: Sun Mar 11 11:35:45 CET 2012
 "
 " License:
 "   Copyright (C) 2009-2012 Petr Zemek
@@ -70,6 +70,8 @@
 "        Enables/disables detection of encoding for CSS documents.
 "    - g:autofenc_autodetect_comment (0 or 1, default 1)
 "        Enables/disables detection of encoding in comments.
+"    - g:autofenc_autodetect_commentexpr (regular expression, see below)
+"        Pattern for detection of encodings specified in a comment.
 "    - g:autofenc_autodetect_num_of_lines (number >= 0, default 5)
 "        How many lines from the beginning and from the end of the file should
 "        be searched for the possible encoding declaration.
@@ -89,6 +91,9 @@
 "        If the output of the external program is this string, then it means
 "        that the file encoding was not detected successfully. The string must
 "        be case-sensitive.
+"    - g:autofenc_enc_blacklist (regular expression, default '')
+"        If the detected encoding matches this regular expression, it is
+"        ignored.
 "
 " Requirements:
 "   - filetype plugin must be enabled (a line like 'filetype plugin on' must
@@ -117,6 +122,29 @@
 "  Let me know if there are others and I'll add them here.
 "
 " Changelog:
+"   1.4 (2012-03-11) Thanks to Ingo Karkat for the updates in this version.
+"     - Improved the detection regexp for comments:
+"         - added "fileencoding" and "charset";
+"         - demands that there is a whitespace in front of the keyword, so that
+"           "daycoding" doesn't match;
+"         - g:autofenc_autodetect_commentexpr allows to configure the pattern
+"           for comment detection.
+"     - Introduced g:autofenc_enc_blacklist to disable some encodings. For
+"       example, the enca tool has a tendency to detect plain text files as
+"       UTF-7. With the blacklist, AutoFenc can be instructed to ignore those
+"       encodings.
+"     - The check for ASCII is set to be case-insensitive because enca reports
+"       this in uppercase, so the condition fails unless ignorecase is set.
+"     - Keeps changed CWD with 'autochdir' setting by temporarily disabling it.
+"       For example, suppose that a user has ":lcd .." in
+"       after/ftplugin/gitcommit.vim and that he is in the Git root directory,
+"       not the .git subdir when composing a commit message. The reload of the
+"       buffer by AutoFenc (via :edit) again triggered the automatic change of
+"       the working dir, and therefore the customization was lost. The
+"       'autochdir' setting needs to be temporarily disabled to avoid that.
+"     - Added a support for plain Vim 7.0 in the shellescape() emulation from
+"       version 1.3.4. Otherwise, there were errors in Vim 7.0.
+"
 "   1.3.4 (2012-02-27)
 "     - Don't override when the user explicitly sets file encoding with ++enc
 "       (thanks to Benjamin Fritz).
@@ -230,11 +258,13 @@ call s:CheckAndSetVar('g:autofenc_autodetect_html', 1)
 call s:CheckAndSetVar('g:autofenc_autodetect_xml', 1)
 call s:CheckAndSetVar('g:autofenc_autodetect_css', 1)
 call s:CheckAndSetVar('g:autofenc_autodetect_comment', 1)
+call s:CheckAndSetVar('g:autofenc_autodetect_commentexpr', '\c^\A\(.*\s\)\?\(\(\(file\)\?en\)\?coding\|charset\)[:=]\?\s*\zs[-A-Za-z0-9_]\+')
 call s:CheckAndSetVar('g:autofenc_autodetect_num_of_lines', 5)
 call s:CheckAndSetVar('g:autofenc_autodetect_ext_prog', 1)
 call s:CheckAndSetVar('g:autofenc_ext_prog_path', 'enca')
 call s:CheckAndSetVar('g:autofenc_ext_prog_args', '-i -L czech')
 call s:CheckAndSetVar('g:autofenc_ext_prog_unknown_fenc', '???')
+call s:CheckAndSetVar('g:autofenc_enc_blacklist', '')
 
 "-------------------------------------------------------------------------------
 " Normalizes selected encoding and returns it, so it can be safely used as
@@ -277,10 +307,24 @@ function s:SetFileEncoding(enc)
 
 	" Check whether we're not trying to set the current file encoding
 	if nenc != "" && nenc !=? &fenc
-		" Set the file encoding and reload it, keeping any user-specified
-		" fileformat, and keeping any bad bytes in case the header is wrong (this
-		" won't let the user save if a conversion error happened on read)
-		exec 'edit ++enc='.nenc.' ++ff='.&ff.' ++bad=keep'
+		if exists('&autochdir') && &autochdir
+			" Other autocmds may have changed the window's working directory;
+			" when 'autochdir' is set, the :edit will reset that, so temporarily
+			" disable the setting.
+			let old_autochdir = &autochdir
+			set noautochdir
+		endif
+		try
+			" Set the file encoding and reload it, keeping any user-specified
+			" fileformat, and keeping any bad bytes in case the header is wrong
+			" (this won't let the user save if a conversion error happened on
+			" read)
+			exec 'edit ++enc='.nenc.' ++ff='.&ff.' ++bad=keep'
+		finally
+			if exists('old_autochdir')
+				let &autochdir = old_autochdir
+			endif
+		endtry
 
 		" File was reloaded
 		return 1
@@ -437,10 +481,10 @@ endfunction
 " returned according to this line. If there is no such line, the empty string
 " is returned.
 "
-" Currently, the format of the comment that specifies encoding is some
-" non-alphabetic characters at the beginning of the line, then 'coding'
-" or 'encoding' (without quotes, case insensitive), which is followed by
-" optional ':' (and whitespace) and the name of the encoding.
+" The default format of the comment that specifies encoding is some
+" non-alphabetic characters at the beginning of the line, then 'charset'
+" or '[[file]en]coding' (without quotes, case insensitive), which is followed
+" by optional ':' (and whitespace) and the name of the encoding.
 "-------------------------------------------------------------------------------
 function s:CommentEncodingDetection()
 	" Get first and last X lines from the file (according to the configuration)
@@ -449,9 +493,8 @@ function s:CommentEncodingDetection()
 	let lines_to_search_enc += readfile(expand('%:p'), '', -num_of_lines)
 
 	" Check all of the returned lines
-	let re = '\c^\A.*\(en\)\?coding[:=]\?\s*\zs[-A-Za-z0-9_]\+'
 	for line in lines_to_search_enc
-		let enc = matchstr(line, re)
+		let enc = matchstr(line, g:autofenc_autodetect_commentexpr)
 		if enc != ''
 			return enc
 		endif
@@ -464,20 +507,26 @@ endfunction
 " A safe version of shellescape. Use it instead of shellescape().
 "-------------------------------------------------------------------------------
 function s:SafeShellescape(path)
-	" On MS Windows, we need to disable the option shellslash before calling
-	" shellescape() because otherwise, it may do stupid things (see, e.g.,
-	" http://vim.1045645.n5.nabble.com/shellescape-doesn-t-work-in-Windows-with-shellslash-set-td1211618.html).
-	if has("win32") || has("win64")
-		try
-			let old_ssl = &shellslash
-			set noshellslash
+	try
+		if exists('*shellescape')
+			" On MS Windows, we need to disable the option shellslash before calling
+			" shellescape() because otherwise, it may do stupid things (see, e.g.,
+			" http://vim.1045645.n5.nabble.com/shellescape-doesn-t-work-in-Windows-with-shellslash-set-td1211618.html).
+			if has("win32") || has("win64")
+				let old_ssl = &shellslash
+				set noshellslash
+			endif
 			return shellescape(a:path)
-		finally
+		else
+			" The shellescape({string}) function only exists since Vim 7.0.111
+			" Try to crudely support plain Vim 7.0, too.
+			return '"'.substitute(a:path, '"', '\\"', 'g').'"'
+		endif
+	finally
+		if exists('old_ssl')
 			let &shellslash = old_ssl
-		endtry
-	else
-		return shellescape(a:path)
-	endif
+		endif
+	endtry
 endfunction
 
 "-------------------------------------------------------------------------------
@@ -599,7 +648,8 @@ function s:DetectAndSetFileEncoding()
 	" don't call again on the nested trigger from the edit
 	let b:autofenc_done = enc
 
-	if (enc != '') && (enc != 'ascii')
+	if (enc != '') && (enc !=? 'ascii') &&
+			\ (g:autofenc_enc_blacklist == '' || enc !~? g:autofenc_enc_blacklist)
 		if s:SetFileEncoding(enc)
 			if g:autofenc_emit_messages
 				echomsg "AutoFenc: Detected [".enc."] from file, loaded with fenc=".&fenc

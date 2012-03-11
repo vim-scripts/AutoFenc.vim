@@ -31,6 +31,8 @@ Configuration options for this plugin (you can set them in your $HOME/.vimrc):
      Enables/disables detection of encoding for CSS documents.
  - g:autofenc_autodetect_comment (0 or 1, default 1)
      Enables/disables detection of encoding in comments.
+ - g:autofenc_autodetect_commentexpr (regular expression, see below)
+     Pattern for detection of encodings specified in a comment.
  - g:autofenc_autodetect_num_of_lines (number >= 0, default 5)
      How many lines from the beginning and from the end of the file should be searched for the possible encoding declaration.
  - g:autofenc_autodetect_ext_prog (0 or 1, default 1)
@@ -41,6 +43,8 @@ Configuration options for this plugin (you can set them in your $HOME/.vimrc):
      Additional program arguments (can be none, i.e. '').
  - g:autofenc_ext_prog_unknown_fenc (string, default '???')
      If the output of the external program is this string, then it means that the file encoding was not detected successfully. The string must be case-sensitive.
+ - g:autofenc_enc_blacklist (regular expression, default '')
+     If the detected encoding matches this regular expression, it will be ignored.
 
 Requirements:
  - filetype plugin must be enabled (a line like 'filetype plugin on' must be in your $HOME/.vimrc [*nix] or %UserProfile%\_vimrc [MS Windows])
