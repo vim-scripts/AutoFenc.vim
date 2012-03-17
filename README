@@ -25,10 +25,16 @@ Configuration options for this plugin (you can set them in your $HOME/.vimrc):
      Enables/disables detection of encoding by BOM.
  - g:autofenc_autodetect_html (0 or 1, default 1)
      Enables/disables detection of encoding for HTML based documents.
+ - g:autofenc_autodetect_html_filetypes (regular expression, see below)
+     Regular expression for all supported HTML file types.
  - g:autofenc_autodetect_xml (0 or 1, default 1)
      Enables/disables detection of encoding for XML based documents.
+ - g:autofenc_autodetect_xml_filetypes (regular expression, see below)
+     Regular expression for all supported XML file types.
  - g:autofenc_autodetect_css (0 or 1, default 1)
      Enables/disables detection of encoding for CSS documents.
+ - g:autofenc_autodetect_css_filetypes (regular expression, see below)
+     Regular expression for all supported CSS file types.
  - g:autofenc_autodetect_comment (0 or 1, default 1)
      Enables/disables detection of encoding in comments.
  - g:autofenc_autodetect_commentexpr (regular expression, see below)

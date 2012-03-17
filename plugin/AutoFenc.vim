@@ -1,8 +1,8 @@
 " File:        AutoFenc.vim
 " Brief:       Tries to automatically detect file encoding
 " Author:      Petr Zemek, s3rvac AT gmail DOT com
-" Version:     1.4
-" Last Change: Sun Mar 11 11:35:45 CET 2012
+" Version:     1.5
+" Last Change: Sat Mar 17 11:39:56 CET 2012
 "
 " License:
 "   Copyright (C) 2009-2012 Petr Zemek
@@ -64,10 +64,16 @@
 "        Enables/disables detection of encoding by BOM.
 "    - g:autofenc_autodetect_html (0 or 1, default 1)
 "        Enables/disables detection of encoding for HTML based documents.
+"    - g:autofenc_autodetect_html_filetypes (regular expression, see below)
+"        Regular expression for all supported HTML file types.
 "    - g:autofenc_autodetect_xml (0 or 1, default 1)
 "        Enables/disables detection of encoding for XML based documents.
+"    - g:autofenc_autodetect_xml_filetypes (regular expression, see below)
+"        Regular expression for all supported XML file types.
 "    - g:autofenc_autodetect_css (0 or 1, default 1)
 "        Enables/disables detection of encoding for CSS documents.
+"    - g:autofenc_autodetect_css_filetypes (regular expression, see below)
+"        Regular expression for all supported CSS file types.
 "    - g:autofenc_autodetect_comment (0 or 1, default 1)
 "        Enables/disables detection of encoding in comments.
 "    - g:autofenc_autodetect_commentexpr (regular expression, see below)
@@ -122,6 +128,10 @@
 "  Let me know if there are others and I'll add them here.
 "
 " Changelog:
+"   1.5 (2012-03-17) Thanks to Ingo Karkat for the updates in this version.
+"     - Supported HTML/XML/CSS file types have been made configurable and added more defaults.
+"     - Do not emit the "unrecognized charset" message when the encoding is known.
+"
 "   1.4 (2012-03-11) Thanks to Ingo Karkat for the updates in this version.
 "     - Improved the detection regexp for comments:
 "         - added "fileencoding" and "charset";
@@ -229,7 +239,7 @@ if exists('autofenc_loaded') || v:version < 700
 	finish
 endif
 " Make the loaded variable actually useful by including the version number
-let autofenc_loaded = '1.3'
+let autofenc_loaded = '1.5'
 
 " This plugin uses line continuations
 if &cpo =~ 'C'
@@ -255,8 +265,11 @@ call s:CheckAndSetVar('g:autofenc_disable_for_files_matching', '^[-_a-zA-Z0-9]\+
 call s:CheckAndSetVar('g:autofenc_disable_for_file_types', [])
 call s:CheckAndSetVar('g:autofenc_autodetect_bom', (&fileencodings !~# 'ucs-bom'))
 call s:CheckAndSetVar('g:autofenc_autodetect_html', 1)
+call s:CheckAndSetVar('g:autofenc_autodetect_html_filetypes', '^\(html.*\|xhtml\|aspperl\|aspvbs\|cf\|dtml\|gsp\|jsp\|mason\|php\|plp\|smarty\|spyce\|webmacro\)$')
 call s:CheckAndSetVar('g:autofenc_autodetect_xml', 1)
+call s:CheckAndSetVar('g:autofenc_autodetect_xml_filetypes', '^\(xml\|xquery\|xsd\|xslt\?\|ant\|dsl\|mxml\|svg\|wsh\|xbl\)$')
 call s:CheckAndSetVar('g:autofenc_autodetect_css', 1)
+call s:CheckAndSetVar('g:autofenc_autodetect_css_filetypes', '^\(css\|sass\)$')
 call s:CheckAndSetVar('g:autofenc_autodetect_comment', 1)
 call s:CheckAndSetVar('g:autofenc_autodetect_commentexpr', '\c^\A\(.*\s\)\?\(\(\(file\)\?en\)\?coding\|charset\)[:=]\?\s*\zs[-A-Za-z0-9_]\+')
 call s:CheckAndSetVar('g:autofenc_autodetect_num_of_lines', 5)
@@ -291,7 +304,7 @@ function s:NormalizeEncoding(enc)
 		return 'cp125'.nenc[strlen(nenc)-1]
 	elseif nenc == 'utf8'
 		return 'utf-8'
-	elseif g:autofenc_emit_messages
+	elseif g:autofenc_emit_messages && nenc !~ '^\%(8bit-\|2byte-\)\?\%(latin[12]\|utf-8\|utf-16\%(le\)\?\|ucs-[24]\%(le\)\?\|iso-8859-\d\{1,2}\|cp\d\{3,4}\)$'
 		echomsg 'AutoFenc: detected unrecognized charset, trying fenc='.nenc
 	endif
 
@@ -594,7 +607,7 @@ function s:DetectFileEncoding()
 	endif
 
 	" HTML encoding detection
-	if g:autofenc_autodetect_html && &filetype =~ '\(html\|xhtml\)'
+	if g:autofenc_autodetect_html && &filetype =~? g:autofenc_autodetect_html_filetypes
 		let enc = s:HTMLEncodingDetection()
 		if enc != ''
 			return enc
@@ -602,7 +615,7 @@ function s:DetectFileEncoding()
 	endif
 
 	" XML encoding detection
-	if g:autofenc_autodetect_xml && &filetype =~ '\(xml\|xsl\|xsd\)'
+	if g:autofenc_autodetect_xml && &filetype =~? g:autofenc_autodetect_xml_filetypes
 		let enc = s:XMLEncodingDetection()
 		if enc != ''
 			return enc
@@ -610,7 +623,7 @@ function s:DetectFileEncoding()
 	endif
 
 	" CSS encoding detection
-	if g:autofenc_autodetect_css && &filetype =~ '\(css\)'
+	if g:autofenc_autodetect_css && &filetype =~? g:autofenc_autodetect_css_filetypes
 		let enc = s:CSSEncodingDetection()
 		if enc != ''
 			return enc
